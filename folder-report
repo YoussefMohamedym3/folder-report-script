@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Set target folder. Default to current directory (.) if no argument is given.
+TARGET_FOLDER="${1:-.}"
+
+# --- Configuration for ignores ---
+# Used by the 'tree' command. Use | to separate patterns.
+IGNORE_TREE_PATTERNS=".env|__pycache__|.git|*_report.txt"
+
+# NOTE: The patterns below are for your reference.
+# They are hard-coded into the 'find' command for accuracy,
+# to avoid accidentally ignoring files like '.env.example'.
+IGNORE_FIND_FILES=".env, *_report.txt"
+IGNORE_FIND_DIRS="__pycache__, .git"
+# ---------------------------------
+
+# Check if the target folder actually exists
+if [ ! -d "$TARGET_FOLDER" ]; then
+  echo "Error: Folder '$TARGET_FOLDER' does not exist."
+  exit 1
+fi
+
+# Get the base name of the folder
+FOLDER_NAME=$(basename "$TARGET_FOLDER")
+OUTPUT_FILE="${FOLDER_NAME}_report.txt"
+
+# --- Start the report ---
+echo "Generating report for: $TARGET_FOLDER"
+
+# Step 1: Overwrite the output file with the tree structure
+echo "=== FOLDER TREE FOR: $TARGET_FOLDER ===" > "$OUTPUT_FILE"
+echo "Tree is ignoring: $IGNORE_TREE_PATTERNS" >> "$OUTPUT_FILE"
+# -a flag shows all files (including dotfiles)
+tree -a "$TARGET_FOLDER" -I "$IGNORE_TREE_PATTERNS" >> "$OUTPUT_FILE"
+
+# Add some space before the next section
+echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
+
+# Step 2: Append the content of each file
+echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
+echo "Find is ignoring: files named '$IGNORE_FIND_FILES', dirs named '$IGNORE_FIND_DIRS'" >> "$OUTPUT_FILE"
+
+# <--- MODIFIED: Added '| sort' to alphabetize the output
+# This makes the file contents appear in the same order as the tree.
+find "$TARGET_FOLDER" \
+  \( -type d -name ".git" -prune \) -o \
+  \( -type d -name "__pycache__" -prune \) -o \
+  \( -type f -name ".env" -prune \) -o \
+  \( -type f -name "*_report.txt" -prune \) -o \
+  \( -type f -print \) | sort | while read file; do
+
+  echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
+  # Use 'cat' and handle potential errors for binary files
+  if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null; then
+    : # Do nothing, cat was successful
+  else
+    echo "[Content is binary or unreadable]" >> "$OUTPUT_FILE"
+  fi
+  echo -e "--- End of: $file ---" >> "$OUTPUT_FILE"
+done
+
+echo "Done! Report saved to $OUTPUT_FILE"
