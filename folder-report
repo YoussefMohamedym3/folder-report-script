@@ -42,6 +42,7 @@ echo "Find is ignoring: files named '$IGNORE_FIND_FILES', dirs named '$IGNORE_FI
 
 # <--- MODIFIED: Added '| sort' to alphabetize the output
 # This makes the file contents appear in the same order as the tree.
+# Find files, sort them, and loop through
 find "$TARGET_FOLDER" \
   \( -type d -name ".git" -prune \) -o \
   \( -type d -name "__pycache__" -prune \) -o \
@@ -50,13 +51,24 @@ find "$TARGET_FOLDER" \
   \( -type f -print \) | sort | while read file; do
 
   echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
-  # Use 'cat' and handle potential errors for binary files
-  if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null; then
-    : # Do nothing, cat was successful
+
+  # Check if the file is a PDF
+  if [[ "$file" == *.pdf ]]; then
+    # Use pdftotext for PDF files, output to stdout (-)
+    if pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null; then
+      : # Success
+    else
+      echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
+    fi
   else
-    echo "[Content is binary or unreadable]" >> "$OUTPUT_FILE"
+    # Use cat for all other files
+    if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null; then
+      : # Success
+    else
+      echo "[Content is binary or unreadable]" >> "$OUTPUT_FILE"
+    fi
   fi
+
   echo -e "--- End of: $file ---" >> "$OUTPUT_FILE"
 done
-
 echo "Done! Report saved to $OUTPUT_FILE"

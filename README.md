@@ -5,7 +5,7 @@
 It's designed for developers, students, and professionals who need to share a project's structure and all its code in one easy-to-read file. It creates a file that includes:
 
 - A complete directory tree, just like the `tree` command (including hidden dotfiles).
-- The full text content of every single file, printed one after another.
+- The full text content of every single file, printed one after another. **PDF text is automatically extracted!** 📄➡️💬
 
 This is extremely useful for:
 
@@ -19,8 +19,26 @@ This is extremely useful for:
 
 - **All-in-One:** Creates one `_report.txt` file named after the folder you scan (e.g., scanning `my-project` creates `my-project_report.txt`).
 - **Intelligent Ignoring:** Automatically skips common files and folders you don't want, such as `.git`, `__pycache__`, the secret `.env` file, and its own report files.
+- **PDF Text Extraction:** Uses `pdftotext` to extract readable text from PDF files, making them searchable and useful in the report.
 - **Easy to Install:** Can be installed as a system-wide command in seconds on Linux.
 - **Customizable:** You can easily edit the script to add your own ignore patterns.
+
+---
+
+## Prerequisites (Linux)
+
+This script relies on two common command-line tools:
+
+1. **`tree`** — Used to generate the directory structure.  
+2. **`pdftotext`** — Used to extract text from PDF files (part of the `poppler-utils` package).
+
+Most Ubuntu/Debian-based systems already have `tree` installed. You might need to install `poppler-utils`.
+
+Before installing the script, run this command to make sure you have the prerequisites:
+
+```bash
+sudo apt update && sudo apt install -y tree poppler-utils
+```
 
 ---
 
@@ -40,7 +58,7 @@ cd folder-report-script
 
 ### Step 2: Install the Script
 
-We will make the script executable and move it to a directory that is in your system's `PATH`.
+We’ll make the script executable and move it to a directory that is in your system’s `PATH`.
 
 1. **Make it Executable:**
 
@@ -110,7 +128,8 @@ You can add your own files/folders to the ignore list.
     ```
 
 2. Add your patterns to the two places at the top of the file:
-    - **`IGNORE_TREE_PATTERNS`:** Add your pattern here (separated by a `|`) to hide it from the `tree` view.
+
+    - **`IGNORE_TREE_PATTERNS`:** Add your pattern here (separated by a `|`) to hide it from the `tree` view.  
     - **The `find` command:** Add a new `-o \( ... -prune \)` line to stop `find` from including its contents.
 
 ---
@@ -118,4 +137,3 @@ You can add your own files/folders to the ignore list.
 ## License
 
 This project is licensed under the **Apache 2.0 License**.
-
