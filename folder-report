@@ -1,18 +1,27 @@
 #!/bin/bash
 
-# Set target folder. Default to current directory (.) if no argument is given.
-TARGET_FOLDER="${1:-.}"
+# Default values
+TARGET_FOLDER="."
+INCLUDE_DB_DATA=false
 
 # --- Configuration for ignores ---
-# Used by the 'tree' command. Use | to separate patterns.
 IGNORE_TREE_PATTERNS=".env|__pycache__|.git|*_report.txt"
-
-# NOTE: The patterns below are for your reference.
-# They are hard-coded into the 'find' command for accuracy,
-# to avoid accidentally ignoring files like '.env.example'.
 IGNORE_FIND_FILES=".env, *_report.txt"
 IGNORE_FIND_DIRS="__pycache__, .git"
 # ---------------------------------
+
+# --- Parse Arguments ---
+# Loop through all arguments provided
+for arg in "$@"; do
+  if [[ "$arg" == "--data" ]]; then
+    INCLUDE_DB_DATA=true
+  elif [[ "$arg" == -* ]]; then
+    echo "Unknown option: $arg"
+    exit 1
+  else
+    TARGET_FOLDER="$arg"
+  fi
+done
 
 # Check if the target folder actually exists
 if [ ! -d "$TARGET_FOLDER" ]; then
@@ -20,28 +29,27 @@ if [ ! -d "$TARGET_FOLDER" ]; then
   exit 1
 fi
 
-# Get the base name of the folder
-FOLDER_NAME=$(basename "$TARGET_FOLDER")
+# Get the base name (using realpath to avoid hidden files)
+FOLDER_NAME=$(basename "$(realpath "$TARGET_FOLDER")")
 OUTPUT_FILE="${FOLDER_NAME}_report.txt"
 
 # --- Start the report ---
 echo "Generating report for: $TARGET_FOLDER"
+if [ "$INCLUDE_DB_DATA" = true ]; then
+    echo "Mode: Including FULL Database Data (Rows)"
+else
+    echo "Mode: Schema Only (Structure)"
+fi
+echo "Saving to: $OUTPUT_FILE"
 
-# Step 1: Overwrite the output file with the tree structure
+# Step 1: Tree Structure
 echo "=== FOLDER TREE FOR: $TARGET_FOLDER ===" > "$OUTPUT_FILE"
-echo "Tree is ignoring: $IGNORE_TREE_PATTERNS" >> "$OUTPUT_FILE"
-# -a flag shows all files (including dotfiles)
 tree -a "$TARGET_FOLDER" -I "$IGNORE_TREE_PATTERNS" >> "$OUTPUT_FILE"
-
-# Add some space before the next section
 echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
 
-# Step 2: Append the content of each file
+# Step 2: File Contents
 echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
-echo "Find is ignoring: files named '$IGNORE_FIND_FILES', dirs named '$IGNORE_FIND_DIRS'" >> "$OUTPUT_FILE"
 
-# <--- MODIFIED: Added '| sort' to alphabetize the output
-# This makes the file contents appear in the same order as the tree.
 # Find files, sort them, and loop through
 find "$TARGET_FOLDER" \
   \( -type d -name ".git" -prune \) -o \
@@ -52,16 +60,36 @@ find "$TARGET_FOLDER" \
 
   echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
 
-  # Check if the file is a PDF
+  # 1. Handle PDF Files
   if [[ "$file" == *.pdf ]]; then
-    # Use pdftotext for PDF files, output to stdout (-)
     if pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null; then
       : # Success
     else
       echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
     fi
+
+  # 2. Handle SQLite Database Files
+  elif [[ "$file" == *.db || "$file" == *.sqlite || "$file" == *.sqlite3 ]]; then
+    if command -v sqlite3 &> /dev/null; then
+      if [ "$INCLUDE_DB_DATA" = true ]; then
+         echo ">>> Extracting FULL SQLite Schema AND Data..." >> "$OUTPUT_FILE"
+         # .dump gives structure + data
+         if sqlite3 "$file" .dump >> "$OUTPUT_FILE" 2>/dev/null; then :; else
+            echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
+         fi
+      else
+         echo ">>> Extracting SQLite Schema Only (Use --data to see rows)..." >> "$OUTPUT_FILE"
+         # .schema gives structure only (CREATE TABLE...)
+         if sqlite3 "$file" .schema >> "$OUTPUT_FILE" 2>/dev/null; then :; else
+            echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
+         fi
+      fi
+    else
+      echo "[Binary SQLite file detected. Install 'sqlite3' to see text dump]" >> "$OUTPUT_FILE"
+    fi
+
+  # 3. Handle Regular Files
   else
-    # Use cat for all other files
     if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null; then
       : # Success
     else
@@ -71,4 +99,5 @@ find "$TARGET_FOLDER" \
 
   echo -e "--- End of: $file ---" >> "$OUTPUT_FILE"
 done
+
 echo "Done! Report saved to $OUTPUT_FILE"
