@@ -10,7 +10,7 @@ IGNORE_TREE_PATTERNS=".env|__pycache__|.git|*_report.txt"
 # NOTE: The patterns below are for your reference.
 # They are hard-coded into the 'find' command for accuracy,
 # to avoid accidentally ignoring files like '.env.example'.
-IGNORE_FIND_FILES=".env, *_report.txt"
+IGNORE_FIND_FILES=".env, *_report.txt, *.db"
 IGNORE_FIND_DIRS="__pycache__, .git"
 # ---------------------------------
 
@@ -48,6 +48,7 @@ find "$TARGET_FOLDER" \
   \( -type d -name "__pycache__" -prune \) -o \
   \( -type f -name ".env" -prune \) -o \
   \( -type f -name "*_report.txt" -prune \) -o \
+  \( -type f -name "*.db" -prune \) -o \
   \( -type f -print \) | sort | while read file; do
 
   echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"

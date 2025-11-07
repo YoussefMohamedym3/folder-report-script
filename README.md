@@ -18,7 +18,8 @@ This is extremely useful for:
 ## Features
 
 - **All-in-One:** Creates one `_report.txt` file named after the folder you scan (e.g., scanning `my-project` creates `my-project_report.txt`).
-- **Intelligent Ignoring:** Automatically skips common files and folders you don't want, such as `.git`, `__pycache__`, the secret `.env` file, and its own report files.
+- **Intelligent Ignoring:** Automatically skips common files and folders you don't want (like `.git`, `__pycache__`, and `.env`) from *both* the tree and the content.
+- **Smart Content-Skipping:** Skips reading the content of binary files (like `.db`) while **still listing them in the tree**, giving a complete structural view without unreadable text.
 - **PDF Text Extraction:** Uses `pdftotext` to extract readable text from PDF files, making them searchable and useful in the report.
 - **Easy to Install:** Can be installed as a system-wide command in seconds on Linux.
 - **Customizable:** You can easily edit the script to add your own ignore patterns.
