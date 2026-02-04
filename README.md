@@ -11,6 +11,7 @@ file. The generated report includes:
 -   The full text content of every file
 -   **Smart Extraction:** Automatically converts PDFs and SQLite
     databases into readable text! 📄🗄️➡️💬
+-   **Binary Safety:** Automatically skips content extraction for media (images, videos) and .pkl files while still listing them in the tree. 🚫📸
 
 This is extremely useful for: - Pasting your *entire* project context
 (including database schema) into an AI prompt - Submitting code for job
@@ -31,8 +32,7 @@ review
     -   **Default:** Dumps **schema only** (tables & columns) to keep
         the report small.
     -   **Optional:** Use `--data` to include all rows from all tables.
--   **Binary Safety:** Skips content extraction for other binary files
-    while still listing them in the tree.
+-   **Binary Safety:** Automatically detects and skips content dumping for images, videos, and .pkl files.
 
 ------------------------------------------------------------------------
 

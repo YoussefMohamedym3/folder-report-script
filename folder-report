@@ -11,11 +11,12 @@ IGNORE_FIND_DIRS="__pycache__, .git"
 # ---------------------------------
 
 # --- Parse Arguments ---
-# Loop through all arguments provided
-for arg in "$@"; do
+for arg in "$@";
+do
   if [[ "$arg" == "--data" ]]; then
     INCLUDE_DB_DATA=true
-  elif [[ "$arg" == -* ]]; then
+  elif [[ "$arg" == -* ]];
+  then
     echo "Unknown option: $arg"
     exit 1
   else
@@ -35,7 +36,8 @@ OUTPUT_FILE="${FOLDER_NAME}_report.txt"
 
 # --- Start the report ---
 echo "Generating report for: $TARGET_FOLDER"
-if [ "$INCLUDE_DB_DATA" = true ]; then
+if [ "$INCLUDE_DB_DATA" = true ];
+then
     echo "Mode: Including FULL Database Data (Rows)"
 else
     echo "Mode: Schema Only (Structure)"
@@ -56,13 +58,16 @@ find "$TARGET_FOLDER" \
   \( -type d -name "__pycache__" -prune \) -o \
   \( -type f -name ".env" -prune \) -o \
   \( -type f -name "*_report.txt" -prune \) -o \
-  \( -type f -print \) | sort | while read file; do
+  \( -type f -print \) | sort | while read file;
+do
 
   echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
 
   # 1. Handle PDF Files
-  if [[ "$file" == *.pdf ]]; then
-    if pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null; then
+  if [[ "$file" == *.pdf ]];
+  then
+    if pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null;
+    then
       : # Success
     else
       echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
@@ -70,17 +75,19 @@ find "$TARGET_FOLDER" \
 
   # 2. Handle SQLite Database Files
   elif [[ "$file" == *.db || "$file" == *.sqlite || "$file" == *.sqlite3 ]]; then
-    if command -v sqlite3 &> /dev/null; then
-      if [ "$INCLUDE_DB_DATA" = true ]; then
+    if command -v sqlite3 &> /dev/null;
+    then
+      if [ "$INCLUDE_DB_DATA" = true ];
+      then
          echo ">>> Extracting FULL SQLite Schema AND Data..." >> "$OUTPUT_FILE"
-         # .dump gives structure + data
-         if sqlite3 "$file" .dump >> "$OUTPUT_FILE" 2>/dev/null; then :; else
+         if sqlite3 "$file" .dump >> "$OUTPUT_FILE" 2>/dev/null;
+         then :; else
             echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
          fi
       else
          echo ">>> Extracting SQLite Schema Only (Use --data to see rows)..." >> "$OUTPUT_FILE"
-         # .schema gives structure only (CREATE TABLE...)
-         if sqlite3 "$file" .schema >> "$OUTPUT_FILE" 2>/dev/null; then :; else
+         if sqlite3 "$file" .schema >> "$OUTPUT_FILE" 2>/dev/null;
+         then :; else
             echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
          fi
       fi
@@ -88,9 +95,16 @@ find "$TARGET_FOLDER" \
       echo "[Binary SQLite file detected. Install 'sqlite3' to see text dump]" >> "$OUTPUT_FILE"
     fi
 
-  # 3. Handle Regular Files
+  # 3. [NEW] Handle Images, Videos, and Pickles
+  # Skips content dumping for these extensions
+  elif [[ "$file" =~ \.(pkl|jpg|jpeg|png|gif|bmp|svg|webp|ico|mp4|mkv|avi|mov|wmv|flv|webm)$ ]]; 
+  then
+    echo "[Skipping binary media/data file]" >> "$OUTPUT_FILE"
+
+  # 4. Handle Regular Files (Default)
   else
-    if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null; then
+    if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null;
+    then
       : # Success
     else
       echo "[Content is binary or unreadable]" >> "$OUTPUT_FILE"
