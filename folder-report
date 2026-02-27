@@ -5,7 +5,7 @@ TARGET_FOLDER="."
 INCLUDE_DB_DATA=false
 
 # --- Configuration for ignores ---
-IGNORE_TREE_PATTERNS=".env|__pycache__|.git|.vs|Debug|Release|build|*_report.txt"
+IGNORE_TREE_PATTERNS=".env|__pycache__|.git|.vs|Debug|Release|build|target|.next|dist|out|node_modules|.idea|.vscode|Cargo.lock|package-lock.json|pnpm-lock.yaml|go.sum|*_report.txt"
 IGNORE_FIND_FILES=".env, *_report.txt"
 IGNORE_FIND_DIRS="__pycache__, .git, .vs, Debug, Release, build"
 # ---------------------------------
@@ -60,6 +60,17 @@ find "$TARGET_FOLDER" \
   \( -type d -name "Debug" -prune \) -o \
   \( -type d -name "Release" -prune \) -o \
   \( -type d -name "build" -prune \) -o \
+  \( -type d -name "target" -prune \) -o \
+  \( -type d -name "node_modules" -prune \) -o \
+  \( -type d -name ".next" -prune \) -o \
+  \( -type d -name "dist" -prune \) -o \
+  \( -type d -name "out" -prune \) -o \
+  \( -type d -name ".idea" -prune \) -o \
+  \( -type d -name ".vscode" -prune \) -o \
+  \( -type f -name "Cargo.lock" -prune \) -o \
+  \( -type f -name "package-lock.json" -prune \) -o \
+  \( -type f -name "pnpm-lock.yaml" -prune \) -o \
+  \( -type f -name "go.sum" -prune \) -o \
   \( -type f -name ".env" -prune \) -o \
   \( -type f -name "*_report.txt" -prune \) -o \
   \( -type f -print \) | sort | while read file;
@@ -101,7 +112,7 @@ do
 
   # 3. [NEW] Handle Images, Videos, Pickles, and Build/Binary Files
   # Skips content dumping for these extensions
-  elif [[ "$file" =~ \.(pkl|jpg|jpeg|png|gif|bmp|svg|webp|ico|mp4|mkv|avi|mov|wmv|flv|webm|ttf|otf|woff|woff2|eot|mp3|wav|zip|tar|gz|rar|exe|dll|so|obj|o|out|bin|pdb|class|tlog|ilk|idb|ipch|pch|gch|xlsx|xls|doc|docx|ppt|pptx)$ ]]; then
+  elif [[ "$file" =~ \.(pkl|jpg|jpeg|png|gif|bmp|svg|webp|ico|mp4|mkv|avi|mov|wmv|flv|webm|ttf|otf|woff|woff2|eot|mp3|wav|zip|tar|gz|rar|exe|dll|so|obj|o|out|bin|pdb|class|tlog|ilk|idb|ipch|pch|gch|xlsx|xls|doc|docx|ppt|pptx|jar)$ ]]; then
     echo "[Skipping binary or build log file]" >> "$OUTPUT_FILE"
     
   # 4. Handle Regular Files (Default)
