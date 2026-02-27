@@ -8,10 +8,10 @@ who need to share a project's structure and content in one readable
 file. The generated report includes:
 
 -   A complete directory tree (including hidden dotfiles)
--   The full text content of every file
+-   The full text content of every code file
 -   **Smart Extraction:** Automatically converts PDFs and SQLite
     databases into readable text! 📄🗄️➡️💬
--   **Binary Safety:** Automatically skips content extraction for media (images, videos) and .pkl files while still listing them in the tree. 🚫📸
+-   **AI-Optimized Context:** Meticulously filters out non-code assets, massive lock files, and build artifacts to prevent token-bloat, making it perfect for feeding codebases into local LLMs (like vLLM or Ollama) or web-based AI assistants. 🤖🧠
 
 This is extremely useful for: - Pasting your *entire* project context
 (including database schema) into an AI prompt - Submitting code for job
@@ -24,15 +24,13 @@ review
 
 -   **All-in-One Output:** Creates a single `_report.txt` file named
     after the scanned folder.
--   **Intelligent Ignoring:** Skips common junk files (like `.git`,
-    `__pycache__`, and `.env`).
--   **PDF Extraction:** Uses `pdftotext` to extract searchable text from
-    PDF files.
+-   **Intelligent Directory Ignoring:** Skips common junk folders, heavy build directories (`node_modules`, `target`, `build`, `dist`, `.next`), and IDE configs (`.vs`, `.idea`, `.vscode`).
+-   **Token-Saving Filters:** Automatically prunes massive dependency lock files (`package-lock.json`, `Cargo.lock`, `go.sum`), heavy datasets (`.csv`), and server logs (`.log`).
+-   **PDF Extraction:** Uses `pdftotext` to extract searchable text from PDF files.
 -   **SQLite Support:**
-    -   **Default:** Dumps **schema only** (tables & columns) to keep
-        the report small.
+    -   **Default:** Dumps **schema only** (tables & columns) to keep the report small.
     -   **Optional:** Use `--data` to include all rows from all tables.
--   **Binary Safety:** Automatically detects and skips content dumping for images, videos, and .pkl files.
+-   **Binary Safety:** Automatically detects and skips content dumping for media (images/video/audio), Microsoft Office files, and compiled binaries (C++ `.obj`/`.tlog`, Java `.jar`, Rust, etc.) while still listing them in the tree. 🚫📸
 
 ------------------------------------------------------------------------
 
