@@ -97,9 +97,9 @@ do
 
   # 3. [NEW] Handle Images, Videos, and Pickles
   # Skips content dumping for these extensions
-  elif [[ "$file" =~ \.(pkl|jpg|jpeg|png|gif|bmp|svg|webp|ico|mp4|mkv|avi|mov|wmv|flv|webm|ttf|otf|woff|woff2|eot|mp3|wav|zip|tar|gz|rar|exe|dll|so)$ ]];  then
+  elif [[ "$file" =~ \.(pkl|jpg|jpeg|png|gif|bmp|svg|webp|ico|mp4|mkv|avi|mov|wmv|flv|webm|ttf|otf|woff|woff2|eot|mp3|wav|zip|tar|gz|rar|exe|dll|so|obj|o|out|bin|pdb|class)$ ]]; then
     echo "[Skipping binary media/data file]" >> "$OUTPUT_FILE"
-
+    
   # 4. Handle Regular Files (Default)
   else
     if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null;
