@@ -5,9 +5,9 @@ TARGET_FOLDER="."
 INCLUDE_DB_DATA=false
 
 # --- Configuration for ignores ---
-IGNORE_TREE_PATTERNS=".env|__pycache__|.git|*_report.txt"
+IGNORE_TREE_PATTERNS=".env|__pycache__|.git|.vs|Debug|Release|build|*_report.txt"
 IGNORE_FIND_FILES=".env, *_report.txt"
-IGNORE_FIND_DIRS="__pycache__, .git"
+IGNORE_FIND_DIRS="__pycache__, .git, .vs, Debug, Release, build"
 # ---------------------------------
 
 # --- Parse Arguments ---
@@ -56,6 +56,10 @@ echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
 find "$TARGET_FOLDER" \
   \( -type d -name ".git" -prune \) -o \
   \( -type d -name "__pycache__" -prune \) -o \
+  \( -type d -name ".vs" -prune \) -o \
+  \( -type d -name "Debug" -prune \) -o \
+  \( -type d -name "Release" -prune \) -o \
+  \( -type d -name "build" -prune \) -o \
   \( -type f -name ".env" -prune \) -o \
   \( -type f -name "*_report.txt" -prune \) -o \
   \( -type f -print \) | sort | while read file;
