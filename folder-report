@@ -1,0 +1,141 @@
+#!/bin/bash
+
+# Default values
+TARGET_FOLDER="."
+INCLUDE_DB_DATA=false
+
+# --- Configuration for ignores ---
+IGNORE_TREE_PATTERNS=".env|__pycache__|.git|.vs|Debug|Release|build|target|.next|dist|out|node_modules|.idea|.vscode|Cargo.lock|package-lock.json|pnpm-lock.yaml|go.sum|*_report.txt"
+
+# --- Parse Arguments ---
+for arg in "$@";
+do
+  if [[ "$arg" == "--data" ]]; then
+    INCLUDE_DB_DATA=true
+  elif [[ "$arg" == -* ]];
+  then
+    echo "Unknown option: $arg"
+    exit 1
+  else
+    TARGET_FOLDER="$arg"
+  fi
+done
+
+# Check if the target folder actually exists
+if [ ! -d "$TARGET_FOLDER" ]; then
+  echo "Error: Folder '$TARGET_FOLDER' does not exist."
+  exit 1
+fi
+
+# Get the base name (using realpath to avoid hidden files)
+FOLDER_NAME=$(basename "$(realpath "$TARGET_FOLDER")")
+OUTPUT_FILE="${FOLDER_NAME}_report.txt"
+
+# --- Start the report ---
+echo "Generating report for: $TARGET_FOLDER"
+if [ "$INCLUDE_DB_DATA" = true ];
+then
+    echo "Mode: Including FULL Database Data (Rows)"
+else
+    echo "Mode: Schema Only (Structure)"
+fi
+echo "Saving to: $OUTPUT_FILE"
+
+# Step 1: Tree Structure
+echo "=== FOLDER TREE FOR: $TARGET_FOLDER ===" > "$OUTPUT_FILE"
+if command -v tree &> /dev/null; then
+    tree -a "$TARGET_FOLDER" -I "$IGNORE_TREE_PATTERNS" >> "$OUTPUT_FILE"
+else
+    echo "[Warning: 'tree' command not found. Falling back to basic directory listing]" >> "$OUTPUT_FILE"
+    find "$TARGET_FOLDER" -type d | sed -e 's;[^/]*/;|____;g;s;____|; |;g' >> "$OUTPUT_FILE"
+fi
+echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
+
+# Step 2: File Contents
+echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
+
+# Find files, sort them, and loop through safely using null-terminators (-print0)
+find "$TARGET_FOLDER" \
+  \( -type d -name ".git" -prune \) -o \
+  \( -type d -name "__pycache__" -prune \) -o \
+  \( -type d -name ".vs" -prune \) -o \
+  \( -type d -name "Debug" -prune \) -o \
+  \( -type d -name "Release" -prune \) -o \
+  \( -type d -name "build" -prune \) -o \
+  \( -type d -name "target" -prune \) -o \
+  \( -type d -name "node_modules" -prune \) -o \
+  \( -type d -name ".next" -prune \) -o \
+  \( -type d -name "dist" -prune \) -o \
+  \( -type d -name "out" -prune \) -o \
+  \( -type d -name ".idea" -prune \) -o \
+  \( -type d -name ".vscode" -prune \) -o \
+  \( -type f -name "Cargo.lock" -prune \) -o \
+  \( -type f -name "package-lock.json" -prune \) -o \
+  \( -type f -name "pnpm-lock.yaml" -prune \) -o \
+  \( -type f -name "go.sum" -prune \) -o \
+  \( -type f -name "*.sln" -prune \) -o \
+  \( -type f -name "*.vcxproj*" -prune \) -o \
+  \( -type f -name "gradlew*" -prune \) -o \
+  \( -type f -name ".env" -prune \) -o \
+  \( -type f -name "*_report.txt" -prune \) -o \
+  \( -type f -print0 \) | sort -z | while IFS= read -r -d '' file;
+do
+
+  echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
+
+  # Convert filename to lowercase for easier extension matching
+  file_lower="${file,,}"
+
+  # 1. Handle PDF Files
+  if [[ "$file_lower" == *.pdf ]];
+  then
+    if command -v pdftotext &> /dev/null; then
+        if pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null; then
+          : # Success
+        else
+          echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
+        fi
+    else
+        echo "[pdftotext not installed. Skipping PDF content]" >> "$OUTPUT_FILE"
+    fi
+
+  # 2. Handle SQLite Database Files
+  elif [[ "$file_lower" == *.db || "$file_lower" == *.sqlite || "$file_lower" == *.sqlite3 ]]; then
+    if command -v sqlite3 &> /dev/null;
+    then
+      if [ "$INCLUDE_DB_DATA" = true ];
+      then
+         echo ">>> Extracting FULL SQLite Schema AND Data..." >> "$OUTPUT_FILE"
+         sqlite3 "$file" .dump >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
+      else
+         echo ">>> Extracting SQLite Schema Only (Use --data to see rows)..." >> "$OUTPUT_FILE"
+         sqlite3 "$file" .schema >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
+      fi
+    else
+      echo "[Binary SQLite file detected. Install 'sqlite3' to see text dump]" >> "$OUTPUT_FILE"
+    fi
+
+  # 3. Handle Known Binary/Media Files (Fast Skip via Extension)
+  elif [[ "$file_lower" =~ \.(node|pyc|pkl|jpg|jpeg|png|gif|bmp|svg|webp|ico|mp4|mkv|avi|mov|wmv|flv|webm|ttf|otf|woff|woff2|eot|mp3|wav|zip|tar|gz|rar|exe|dll|so|obj|o|out|bin|pdb|class|tlog|ilk|idb|ipch|pch|gch|xlsx|xls|doc|docx|ppt|pptx|jar|csv|log)$ ]]; then
+    echo "[Skipping known binary or build file based on extension]" >> "$OUTPUT_FILE"
+    
+  # 4. Handle Regular Files (Dynamic MIME Type Check)
+  else
+    # Verify file is not a binary using mime-encoding before blindly reading it
+    MIME_ENCODING=$(file -b --mime-encoding "$file" 2>/dev/null)
+    
+    if [[ "$MIME_ENCODING" == "binary" ]]; then
+        echo "[Skipping binary file detected by mime-encoding check]" >> "$OUTPUT_FILE"
+    else
+        if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null; then
+          : # Success
+        else
+          echo "[Content is unreadable or permission denied]" >> "$OUTPUT_FILE"
+        fi
+    fi
+  fi
+
+  echo -e "--- End of: $file ---" >> "$OUTPUT_FILE"
+done
+
+echo "Done! Report saved to $OUTPUT_FILE"
