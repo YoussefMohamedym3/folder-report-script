@@ -1,126 +1,106 @@
 # Folder Report Script 🌲📝
 
-`folder-report` is a simple but powerful Bash script that generates a
-complete "snapshot" of a directory into a single text file.
+`folder-report` is a robust Bash utility that generates a comprehensive, single-file text snapshot of a codebase or directory structure. 
 
-It's designed for developers, students, researchers, and professionals
-who need to share a project's structure and content in one readable
-file. The generated report includes:
+Originally designed for developers, researchers, and students, this tool is **optimized for AI workflows**. It allows you to seamlessly ingest entire projects—including database schemas and PDF documentation—into local LLMs (like vLLM or Ollama) or web-based AI assistants without bloating your context window with useless binary data.
 
--   A complete directory tree (including hidden dotfiles)
--   The full text content of every code file
--   **Smart Extraction:** Automatically converts PDFs and SQLite
-    databases into readable text! 📄🗄️➡️💬
--   **AI-Optimized Context:** Meticulously filters out non-code assets, massive lock files, and build artifacts to prevent token-bloat, making it perfect for feeding codebases into local LLMs (like vLLM or Ollama) or web-based AI assistants. 🤖🧠
+---
 
-This is extremely useful for: - Pasting your *entire* project context
-(including database schema) into an AI prompt - Submitting code for job
-applications or school projects - Sharing a project with colleagues for
-review
+## 🚀 Core Features
 
-------------------------------------------------------------------------
+* **All-in-One Context:** Compiles a complete directory tree and the full text of all readable files into a single, easily shareable `_report.txt` file.
+* **🧠 AI & Token Optimized:** * Intelligently ignores heavy build directories (`node_modules`, `target`, `dist`), IDE configs (`.idea`, `.vscode`), and common junk folders.
+    * Automatically prunes massive lock files (`package-lock.json`, `Cargo.lock`) and server logs to preserve LLM token limits.
+* **🛡️ Dual-Layer Binary Protection (NEW):**
+    * **Extension Filtering:** Instantly skips known compiled binaries, media assets, and build files.
+    * **Dynamic MIME-Type Inspection:** Acts as an enterprise-grade failsafe. It physically inspects file headers using the Linux `file` utility to block raw machine code from extension-less files, ensuring your report (and your terminal) is never corrupted.
+* **📂 Safe Traversal (NEW):** Utilizes null-terminated string processing to safely handle complex filenames containing spaces, special characters, or emojis without breaking the script.
+* **📄 Smart Data Extraction:** * **PDFs:** Uses `pdftotext` to extract raw, searchable text from document assets.
+    * **SQLite Databases:** Dumps **schema only** by default to keep context lightweight, with an optional `--data` flag to inject full table rows.
+* **⚙️ Graceful Fallbacks (NEW):** If optional dependencies like `tree` or `pdftotext` are missing on the host machine, the script will not crash; it will seamlessly fall back to native Bash alternatives or skip the unreadable files.
 
-## Features
+---
 
--   **All-in-One Output:** Creates a single `_report.txt` file named
-    after the scanned folder.
--   **Intelligent Directory Ignoring:** Skips common junk folders, heavy build directories (`node_modules`, `target`, `build`, `dist`, `.next`), and IDE configs (`.vs`, `.idea`, `.vscode`).
--   **Token-Saving Filters:** Automatically prunes massive dependency lock files (`package-lock.json`, `Cargo.lock`, `go.sum`), heavy datasets (`.csv`), and server logs (`.log`).
--   **PDF Extraction:** Uses `pdftotext` to extract searchable text from PDF files.
--   **SQLite Support:**
-    -   **Default:** Dumps **schema only** (tables & columns) to keep the report small.
-    -   **Optional:** Use `--data` to include all rows from all tables.
--   **Binary Safety:** Automatically detects and skips content dumping for media (images/video/audio), Microsoft Office files, and compiled binaries (C++ `.obj`/`.tlog`, Java `.jar`, Rust, etc.) while still listing them in the tree. 🚫📸
+## 🛠️ Prerequisites (Linux)
 
-------------------------------------------------------------------------
+While the script utilizes standard Bash utilities, it relies on a few common packages for advanced data extraction:
 
-## Prerequisites (Linux)
-
-This script relies on three common tools:
-
-1.  `tree`
-2.  `poppler-utils` --- provides `pdftotext`
-3.  `sqlite3`
-
-Install them with:
-
-``` bash
-sudo apt update && sudo apt install -y tree poppler-utils sqlite3
+```bash
+# 'tree' for mapping, 'poppler-utils' for PDF text, 'sqlite3' for database schemas
+sudo apt update && sudo apt install -y tree poppler-utils sqlite3 file
 ```
 
-------------------------------------------------------------------------
+---
 
-## Installation (Linux)
+## 💻 Installation
 
-### Step 1: Clone or Download
-
-``` bash
-git clone https://github.com/YoussefMohamedym3/folder-report-script.git
+### Step 1: Clone the Repository
+```bash
+git clone [https://github.com/YoussefMohamedym3/folder-report-script.git](https://github.com/YoussefMohamedym3/folder-report-script.git)
 cd folder-report-script
 ```
 
-### Step 2: Install the Script
-
-``` bash
+### Step 2: Install Globally
+Make the script executable and move it to your local binaries path:
+```bash
 chmod +x folder-report
 mkdir -p ~/.local/bin
 mv folder-report ~/.local/bin/
 ```
+*(Note: You may need to restart your terminal or `source ~/.bashrc` if `~/.local/bin` was just created).*
 
-Restart your terminal afterward.
+---
 
-------------------------------------------------------------------------
+## 📖 Usage Guide
 
-## How to Use
+Navigate to the directory you want to snapshot and run the command.
 
-### **1. Standard Report (Recommended)**
-
-``` bash
+### 1. Standard Report (Recommended for AI Context)
+Generates the directory tree, all code contents, and SQLite database **schemas** only.
+```bash
 folder-report .
 ```
 
-### **2. Full Data Report**
-
-``` bash
+### 2. Full Data Report
+Includes the full output of standard mode, but also extracts and appends **all table rows** from any `.db` or `.sqlite` files.
+```bash
 folder-report . --data
 ```
 
-------------------------------------------------------------------------
+---
 
-## SQLite Output Examples
+## 🗄️ SQLite Output Examples
 
-### **Standard Mode (Schema Only)**
-
-    --- Content of: ./database.db ---
-    >>> Extracting SQLite Schema Only (Use --data to see rows)...
-    CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
-    --- End of: ./database.db ---
-
-### **With --data**
-
-    --- Content of: ./database.db ---
-    >>> Extracting FULL SQLite Schema AND Data...
-    CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
-    INSERT INTO users VALUES(1,'Alice','alice@example.com');
-    --- End of: ./database.db ---
-
-------------------------------------------------------------------------
-
-## Customize Ignores
-
-Edit the script:
-
-``` bash
-nano ~/.local/bin/folder-report
+**Standard Mode (Schema Only):**
+```sql
+--- Content of: ./database.db ---
+>>> Extracting SQLite Schema Only (Use --data to see rows)...
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+--- End of: ./database.db ---
 ```
 
-Modify ignore patterns in:
+**Full Data Mode (`--data`):**
+```sql
+--- Content of: ./database.db ---
+>>> Extracting FULL SQLite Schema AND Data...
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+INSERT INTO users VALUES(1,'Alice','alice@example.com');
+--- End of: ./database.db ---
+```
 
--   `IGNORE_TREE_PATTERNS`
--   The `find` command rules
+---
 
-------------------------------------------------------------------------
+## ⚙️ Customization
 
-## License
+If you need to tweak the ignore lists for a specific tech stack, simply edit the configuration block at the top of the script:
 
-Apache 2.0 License.
+```bash
+nano ~/.local/bin/folder-report
+```
+Modify the `IGNORE_TREE_PATTERNS` or append new extensions to the `Regex` check within the `find` loop.
+
+---
+
+## 📄 License
+
+Distributed under the Apache 2.0 License.
