@@ -3,22 +3,26 @@
 # Default values
 TARGET_FOLDER="."
 INCLUDE_DB_DATA=false
+INCLUDE_ALL=false
+EXPLICIT_INCLUDES=()
 
-# --- Configuration for ignores ---
-IGNORE_TREE_PATTERNS=".env|__pycache__|.git|.vs|Debug|Release|build|target|.next|dist|out|node_modules|.idea|.vscode|Cargo.lock|package-lock.json|pnpm-lock.yaml|go.sum|*_report.txt"
-
-# --- Parse Arguments ---
-for arg in "$@";
-do
-  if [[ "$arg" == "--data" ]]; then
-    INCLUDE_DB_DATA=true
-  elif [[ "$arg" == -* ]];
-  then
-    echo "Unknown option: $arg"
-    exit 1
-  else
-    TARGET_FOLDER="$arg"
-  fi
+# --- Parse Arguments (Upgraded while/case loop) ---
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --data) INCLUDE_DB_DATA=true; shift ;;
+    --include-all) INCLUDE_ALL=true; shift ;;
+    --include)
+      # Read comma-separated list into bash array
+      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "$2"
+      shift 2
+      ;;
+    --include=*)
+      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "${1#*=}"
+      shift 1
+      ;;
+    -*) echo "Unknown option: $1"; exit 1 ;;
+    *) TARGET_FOLDER="$1"; shift ;;
+  esac
 done
 
 # Check if the target folder actually exists
@@ -27,19 +31,80 @@ if [ ! -d "$TARGET_FOLDER" ]; then
   exit 1
 fi
 
-# Get the base name (using realpath to avoid hidden files)
 FOLDER_NAME=$(basename "$(realpath "$TARGET_FOLDER")")
 OUTPUT_FILE="${FOLDER_NAME}_report.txt"
 
+# --- Dynamic Ignore Logic ---
+TREE_IGNORES=()
+FIND_EXCLUSIONS=()
+
+# Helper function to check if an item was explicitly included
+should_ignore() {
+    local target="$1"
+    for inc in "${EXPLICIT_INCLUDES[@]}"; do
+        if [[ "$inc" == "$target" ]]; then
+            return 1 # False, do not ignore
+        fi
+    done
+    return 0 # True, go ahead and ignore it
+}
+
+add_dir_ignore() {
+    local name="$1"
+    if should_ignore "$name"; then
+        TREE_IGNORES+=("$name")
+        FIND_EXCLUSIONS+=( -type d -name "$name" -prune -o )
+    fi
+}
+
+add_file_ignore() {
+    local name="$1"
+    if should_ignore "$name"; then
+        TREE_IGNORES+=("$name")
+        FIND_EXCLUSIONS+=( -type f -name "$name" -prune -o )
+    fi
+}
+
+# 1. Core Ignores (Always ignored unless explicitly asked for)
+add_dir_ignore ".git"
+add_dir_ignore "__pycache__"
+add_dir_ignore ".vs"
+add_dir_ignore ".idea"
+add_dir_ignore ".vscode"
+add_file_ignore "*_report.txt"
+
+# 2. Heavy Ignores (Ignored by default, bypassed by --include-all or --include)
+if [ "$INCLUDE_ALL" = false ]; then
+    add_dir_ignore "node_modules"
+    add_dir_ignore "dist"
+    add_dir_ignore "build"
+    add_dir_ignore "out"
+    add_dir_ignore "target"
+    add_dir_ignore "Debug"
+    add_dir_ignore "Release"
+    add_dir_ignore ".next"
+    
+    add_file_ignore "Cargo.lock"
+    add_file_ignore "package-lock.json"
+    add_file_ignore "pnpm-lock.yaml"
+    add_file_ignore "go.sum"
+    add_file_ignore ".env"
+fi
+
+# Close the find exclusions array
+FIND_EXCLUSIONS+=( -type f -print0 )
+
+# Join TREE_IGNORES array into a regex string (e.g. "dist|node_modules|.git")
+IGNORE_TREE_PATTERNS=$(IFS="|"; echo "${TREE_IGNORES[*]}")
+
+
 # --- Start the report ---
 echo "Generating report for: $TARGET_FOLDER"
-if [ "$INCLUDE_DB_DATA" = true ];
-then
-    echo "Mode: Including FULL Database Data (Rows)"
-else
-    echo "Mode: Schema Only (Structure)"
+if [ "$INCLUDE_ALL" = true ]; then
+    echo "Mode: Including ALL heavy directories (dist, node_modules, etc.)"
+elif [ ${#EXPLICIT_INCLUDES[@]} -gt 0 ]; then
+    echo "Mode: Explicitly including -> ${EXPLICIT_INCLUDES[*]}"
 fi
-echo "Saving to: $OUTPUT_FILE"
 
 # Step 1: Tree Structure
 echo "=== FOLDER TREE FOR: $TARGET_FOLDER ===" > "$OUTPUT_FILE"
@@ -54,61 +119,29 @@ echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
 # Step 2: File Contents
 echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
 
-# Find files, sort them, and loop through safely using null-terminators (-print0)
-find "$TARGET_FOLDER" \
-  \( -type d -name ".git" -prune \) -o \
-  \( -type d -name "__pycache__" -prune \) -o \
-  \( -type d -name ".vs" -prune \) -o \
-  \( -type d -name "Debug" -prune \) -o \
-  \( -type d -name "Release" -prune \) -o \
-  \( -type d -name "build" -prune \) -o \
-  \( -type d -name "target" -prune \) -o \
-  \( -type d -name "node_modules" -prune \) -o \
-  \( -type d -name ".next" -prune \) -o \
-  \( -type d -name "dist" -prune \) -o \
-  \( -type d -name "out" -prune \) -o \
-  \( -type d -name ".idea" -prune \) -o \
-  \( -type d -name ".vscode" -prune \) -o \
-  \( -type f -name "Cargo.lock" -prune \) -o \
-  \( -type f -name "package-lock.json" -prune \) -o \
-  \( -type f -name "pnpm-lock.yaml" -prune \) -o \
-  \( -type f -name "go.sum" -prune \) -o \
-  \( -type f -name "*.sln" -prune \) -o \
-  \( -type f -name "*.vcxproj*" -prune \) -o \
-  \( -type f -name "gradlew*" -prune \) -o \
-  \( -type f -name ".env" -prune \) -o \
-  \( -type f -name "*_report.txt" -prune \) -o \
-  \( -type f -print0 \) | sort -z | while IFS= read -r -d '' file;
+# Execute the dynamically built find command safely
+find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d '' file;
 do
-
   echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
 
-  # Convert filename to lowercase for easier extension matching
   file_lower="${file,,}"
 
   # 1. Handle PDF Files
-  if [[ "$file_lower" == *.pdf ]];
-  then
+  if [[ "$file_lower" == *.pdf ]]; then
     if command -v pdftotext &> /dev/null; then
-        if pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null; then
-          : # Success
-        else
-          echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
-        fi
+        pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null || echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
     else
         echo "[pdftotext not installed. Skipping PDF content]" >> "$OUTPUT_FILE"
     fi
 
   # 2. Handle SQLite Database Files
   elif [[ "$file_lower" == *.db || "$file_lower" == *.sqlite || "$file_lower" == *.sqlite3 ]]; then
-    if command -v sqlite3 &> /dev/null;
-    then
-      if [ "$INCLUDE_DB_DATA" = true ];
-      then
+    if command -v sqlite3 &> /dev/null; then
+      if [ "$INCLUDE_DB_DATA" = true ]; then
          echo ">>> Extracting FULL SQLite Schema AND Data..." >> "$OUTPUT_FILE"
          sqlite3 "$file" .dump >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
       else
-         echo ">>> Extracting SQLite Schema Only (Use --data to see rows)..." >> "$OUTPUT_FILE"
+         echo ">>> Extracting SQLite Schema Only..." >> "$OUTPUT_FILE"
          sqlite3 "$file" .schema >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
       fi
     else
@@ -121,17 +154,11 @@ do
     
   # 4. Handle Regular Files (Dynamic MIME Type Check)
   else
-    # Verify file is not a binary using mime-encoding before blindly reading it
     MIME_ENCODING=$(file -b --mime-encoding "$file" 2>/dev/null)
-    
     if [[ "$MIME_ENCODING" == "binary" ]]; then
         echo "[Skipping binary file detected by mime-encoding check]" >> "$OUTPUT_FILE"
     else
-        if cat "$file" >> "$OUTPUT_FILE" 2>/dev/null; then
-          : # Success
-        else
-          echo "[Content is unreadable or permission denied]" >> "$OUTPUT_FILE"
-        fi
+        cat "$file" >> "$OUTPUT_FILE" 2>/dev/null || echo "[Content is unreadable or permission denied]" >> "$OUTPUT_FILE"
     fi
   fi
 
