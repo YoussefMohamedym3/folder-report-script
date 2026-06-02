@@ -5,6 +5,7 @@ TARGET_FOLDER="."
 INCLUDE_DB_DATA=false
 INCLUDE_ALL=false
 EXPLICIT_INCLUDES=()
+EXPLICIT_EXCLUDES=()
 
 # --- Parse Arguments (Upgraded while/case loop) ---
 while [[ "$#" -gt 0 ]]; do
@@ -18,6 +19,15 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --include=*)
       IFS=',' read -r -a EXPLICIT_INCLUDES <<< "${1#*=}"
+      shift 1
+      ;;
+    --exclude)
+      # Read comma-separated list of runtime exclusions
+      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "$2"
+      shift 2
+      ;;
+    --exclude=*)
+      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "${1#*=}"
       shift 1
       ;;
     -*) echo "Unknown option: $1"; exit 1 ;;
@@ -91,6 +101,12 @@ if [ "$INCLUDE_ALL" = false ]; then
     add_file_ignore ".env"
 fi
 
+# 3. Dynamic User Excludes (Passed via --exclude)
+for exc in "${EXPLICIT_EXCLUDES[@]}"; do
+    TREE_IGNORES+=("$exc")
+    FIND_EXCLUSIONS+=( -name "$exc" -prune -o )
+done
+
 # Close the find exclusions array
 FIND_EXCLUSIONS+=( -type f -print0 )
 
@@ -104,6 +120,10 @@ if [ "$INCLUDE_ALL" = true ]; then
     echo "Mode: Including ALL heavy directories (dist, node_modules, etc.)"
 elif [ ${#EXPLICIT_INCLUDES[@]} -gt 0 ]; then
     echo "Mode: Explicitly including -> ${EXPLICIT_INCLUDES[*]}"
+fi
+
+if [ ${#EXPLICIT_EXCLUDES[@]} -gt 0 ]; then
+    echo "Mode: Explicitly excluding -> ${EXPLICIT_EXCLUDES[*]}"
 fi
 
 # Step 1: Tree Structure
@@ -120,8 +140,7 @@ echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
 echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
 
 # Execute the dynamically built find command safely
-find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d '' file;
-do
+find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d '' file; do
   echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
 
   file_lower="${file,,}"

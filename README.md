@@ -19,6 +19,9 @@ Originally designed for developers, researchers, and students, this tool is **op
 * **📄 Smart Data Extraction:** * **PDFs:** Uses `pdftotext` to extract raw, searchable text from document assets.
     * **SQLite Databases:** Dumps **schema only** by default to keep context lightweight, with an optional `--data` flag to inject full table rows.
 * **⚙️ Graceful Fallbacks:** If optional dependencies like `tree` or `pdftotext` are missing on the host machine, the script will not crash; it will seamlessly fall back to native Bash alternatives or skip the unreadable files.
+* **🎛️ Granular Context Control (NEW):** 
+    * **Include:** Need to inspect a build folder? Use the `--include` flag to explicitly rescue specific files or directories (like `dist` or `package-lock.json`) from the ignore list without dumping the rest of the junk.
+    * **Exclude:** Want to skip specific test directories or temporary folders at runtime? Pass them to the `--exclude` flag to temporarily ignore them without modifying the script's core configurations.
 
 ---
 
@@ -80,7 +83,11 @@ Forces the script to traverse and extract *everything*, bypassing the default he
 ```bash
 folder-report . --include-all
 ```
-
+### 5. Dynamic Exclusion (Ignore specific items)
+If you have specific folders or files you want to omit from the report at runtime (like `tests` or `dummy_data`), pass a comma-separated list to the `--exclude` flag. 
+```bash
+folder-report . --exclude tests,dummy_data,secret_config.json
+(This prevents the specified items from being mapped in the tree or having their contents extracted).
 ---
 
 ## 🗄️ SQLite Output Examples
