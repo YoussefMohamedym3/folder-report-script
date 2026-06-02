@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Default values
 TARGET_FOLDER="."
@@ -8,36 +9,30 @@ EXPLICIT_INCLUDES=()
 EXPLICIT_EXCLUDES=()
 EXCLUDE_CONTENT=()
 
-# --- Parse Arguments (Upgraded while/case loop) ---
+# --- Parse Arguments ---
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     --data) INCLUDE_DB_DATA=true; shift ;;
     --include-all) INCLUDE_ALL=true; shift ;;
-    --include)
-      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "$2"; shift 2 ;;
-    --include=*)
-      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "${1#*=}"; shift 1 ;;
-    --exclude)
-      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "$2"; shift 2 ;;
-    --exclude=*)
-      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "${1#*=}"; shift 1 ;;
-    --exclude-content)
-      IFS=',' read -r -a EXCLUDE_CONTENT <<< "$2"; shift 2 ;;
-    --exclude-content=*)
-      IFS=',' read -r -a EXCLUDE_CONTENT <<< "${1#*=}"; shift 1 ;;
-    -*) echo "Unknown option: $1"; exit 1 ;;
+    --include) IFS=',' read -r -a EXPLICIT_INCLUDES <<< "$2"; shift 2 ;;
+    --include=*) IFS=',' read -r -a EXPLICIT_INCLUDES <<< "${1#*=}"; shift 1 ;;
+    --exclude) IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "$2"; shift 2 ;;
+    --exclude=*) IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "${1#*=}"; shift 1 ;;
+    --exclude-content) IFS=',' read -r -a EXCLUDE_CONTENT <<< "$2"; shift 2 ;;
+    --exclude-content=*) IFS=',' read -r -a EXCLUDE_CONTENT <<< "${1#*=}"; shift 1 ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
     *) TARGET_FOLDER="$1"; shift ;;
   esac
 done
 
 # Check if the target folder actually exists
 if [ ! -d "$TARGET_FOLDER" ]; then
-  echo "Error: Folder '$TARGET_FOLDER' does not exist."
+  echo "Error: Folder '$TARGET_FOLDER' does not exist." >&2
   exit 1
 fi
 
 FOLDER_NAME=$(basename "$(realpath "$TARGET_FOLDER")")
-OUTPUT_FILE="${FOLDER_NAME}_report.txt"
+OUTPUT_FILE="${FOLDER_NAME}_report.xml"
 
 # --- Dynamic Ignore Logic ---
 TREE_IGNORES=()
@@ -45,7 +40,8 @@ FIND_EXCLUSIONS=()
 
 should_ignore() {
     local target="$1"
-    for inc in "${EXPLICIT_INCLUDES[@]}"; do
+    # Use :- to prevent unbound variable errors under set -u
+    for inc in "${EXPLICIT_INCLUDES[@]:-}"; do
         if [[ "$inc" == "$target" ]]; then
             return 1 # False, do not ignore
         fi
@@ -75,6 +71,7 @@ add_dir_ignore "__pycache__"
 add_dir_ignore ".vs"
 add_dir_ignore ".idea"
 add_dir_ignore ".vscode"
+add_file_ignore "*_report.xml"
 add_file_ignore "*_report.txt"
 
 # 2. Heavy Ignores 
@@ -93,55 +90,99 @@ if [ "$INCLUDE_ALL" = false ]; then
     add_file_ignore ".env"
 fi
 
-# 3. Dynamic User Excludes (Passed via --exclude) - Drops from Tree AND Content
-for exc in "${EXPLICIT_EXCLUDES[@]}"; do
+# 3. Dynamic User Excludes
+for exc in "${EXPLICIT_EXCLUDES[@]:-}"; do
+    [[ -z "$exc" ]] && continue
     TREE_IGNORES+=("$exc")
     FIND_EXCLUSIONS+=( -name "$exc" -prune -o )
 done
 
-# 4. Dynamic Content-Only Excludes (Passed via --exclude-content) - Keeps in Tree, Drops Content
-for exc in "${EXCLUDE_CONTENT[@]}"; do
+# 4. Dynamic Content-Only Excludes
+for exc in "${EXCLUDE_CONTENT[@]:-}"; do
+    [[ -z "$exc" ]] && continue
     FIND_EXCLUSIONS+=( -name "$exc" -prune -o )
 done
 
 # Close the find exclusions array
 FIND_EXCLUSIONS+=( -type f -print0 )
 
-IGNORE_TREE_PATTERNS=$(IFS="|"; echo "${TREE_IGNORES[*]}")
+IGNORE_TREE_PATTERNS=$(IFS="|"; echo "${TREE_IGNORES[*]:-}")
 
-# --- Start the report ---
-echo "Generating report for: $TARGET_FOLDER"
+# --- Processing & Sanitization Functions ---
+
+escape_xml() {
+    # Replaces &, <, and > safely without disrupting file structures
+    sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+process_source_file() {
+    local file="$1"
+    local ext="${file##*.}"
+    ext="${ext,,}" # Convert to lowercase
+
+    # Apply targeted comment stripping based on extension, then pipe to XML escaper
+    case "$ext" in
+        js|ts|jsx|tsx|java|c|cpp|cs|h|hpp)
+            # Strips multi-line and single-line comments
+            perl -0777 -pe 's/\/\*.*?\*\///gs; s/(?<!:)\/\/.*//g' "$file" | escape_xml
+            ;;
+        py|sh|rb|yaml|yml)
+            # Strips full-line comments starting with hash
+            perl -0777 -pe 's/^\s*#.*//gm' "$file" | escape_xml
+            ;;
+        html|xml|svg)
+            # Strips standard markup comments
+            perl -0777 -pe 's///gs' "$file" | escape_xml
+            ;;
+        *)
+            # Fallback for untargeted files: Just escape the XML
+            cat "$file" | escape_xml
+            ;;
+    esac
+}
+
+# --- Start Pipeline ---
+echo "Generating XML codebase report for: $TARGET_FOLDER"
+
+# Initialize XML Structure
+echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" > "$OUTPUT_FILE"
+echo "<repository target=\"$TARGET_FOLDER\">" >> "$OUTPUT_FILE"
 
 # Step 1: Tree Structure
-echo "=== FOLDER TREE FOR: $TARGET_FOLDER ===" > "$OUTPUT_FILE"
-if command -v tree &> /dev/null; then
-    tree -a "$TARGET_FOLDER" -I "$IGNORE_TREE_PATTERNS" >> "$OUTPUT_FILE"
+echo "<directory_structure>" >> "$OUTPUT_FILE"
+if command -v tree >/dev/null 2>&1; then
+    # || true prevents pipefail from crashing the script if tree returns non-zero
+    tree -a "$TARGET_FOLDER" -I "$IGNORE_TREE_PATTERNS" | escape_xml >> "$OUTPUT_FILE" || true
 else
-    find "$TARGET_FOLDER" -type d | sed -e 's;[^/]*/;|____;g;s;____|; |;g' >> "$OUTPUT_FILE"
+    find "$TARGET_FOLDER" -type d | sed -e 's;[^/]*/;|____;g;s;____|; |;g' | escape_xml >> "$OUTPUT_FILE" || true
 fi
-echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
+echo "</directory_structure>" >> "$OUTPUT_FILE"
 
 # Step 2: File Contents
-echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
+echo "<files>" >> "$OUTPUT_FILE"
 
-find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d '' file; do
-  echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
+# Execute safely; || [[ -n "$file" ]] prevents premature exit on the last loop iteration
+find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d '' file || [[ -n "$file" ]]; do
+  
+  # Escape the file path attribute itself to ensure strict XML validity
+  echo "<file path=\"$(echo "$file" | escape_xml)\">" >> "$OUTPUT_FILE"
 
   file_lower="${file,,}"
 
   if [[ "$file_lower" == *.pdf ]]; then
-    if command -v pdftotext &> /dev/null; then
-        pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null || echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
+    if command -v pdftotext >/dev/null 2>&1; then
+        # Bypasses the comment stripper, strictly pipes to XML escaper
+        pdftotext "$file" - 2>/dev/null | escape_xml >> "$OUTPUT_FILE" || echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
     else
         echo "[pdftotext not installed. Skipping PDF content]" >> "$OUTPUT_FILE"
     fi
 
   elif [[ "$file_lower" == *.db || "$file_lower" == *.sqlite || "$file_lower" == *.sqlite3 ]]; then
-    if command -v sqlite3 &> /dev/null; then
+    if command -v sqlite3 >/dev/null 2>&1; then
       if [ "$INCLUDE_DB_DATA" = true ]; then
-         sqlite3 "$file" .dump >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
+         sqlite3 "$file" .dump 2>/dev/null | escape_xml >> "$OUTPUT_FILE" || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
       else
-         sqlite3 "$file" .schema >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
+         sqlite3 "$file" .schema 2>/dev/null | escape_xml >> "$OUTPUT_FILE" || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
       fi
     else
       echo "[Binary SQLite file detected. Install 'sqlite3' to see text dump]" >> "$OUTPUT_FILE"
@@ -151,15 +192,20 @@ find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d 
     echo "[Skipping known binary or build file based on extension]" >> "$OUTPUT_FILE"
     
   else
-    MIME_ENCODING=$(file -b --mime-encoding "$file" 2>/dev/null)
+    # Fallback binary check
+    MIME_ENCODING=$(file -b --mime-encoding "$file" 2>/dev/null || echo "binary")
     if [[ "$MIME_ENCODING" == "binary" ]]; then
         echo "[Skipping binary file detected by mime-encoding check]" >> "$OUTPUT_FILE"
     else
-        cat "$file" >> "$OUTPUT_FILE" 2>/dev/null || echo "[Content is unreadable or permission denied]" >> "$OUTPUT_FILE"
+        # Correctly redirected output to append securely into the XML file
+        process_source_file "$file" >> "$OUTPUT_FILE" 2>/dev/null || echo "[Content unreadable or permissions denied]" >> "$OUTPUT_FILE"
     fi
   fi
 
-  echo -e "--- End of: $file ---" >> "$OUTPUT_FILE"
+  echo "</file>" >> "$OUTPUT_FILE"
 done
 
-echo "Done! Report saved to $OUTPUT_FILE"
+echo "</files>" >> "$OUTPUT_FILE"
+echo "</repository>" >> "$OUTPUT_FILE"
+
+echo "Done! Saved token-optimized report to $OUTPUT_FILE"
