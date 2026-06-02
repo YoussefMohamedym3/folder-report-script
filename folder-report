@@ -6,6 +6,7 @@ INCLUDE_DB_DATA=false
 INCLUDE_ALL=false
 EXPLICIT_INCLUDES=()
 EXPLICIT_EXCLUDES=()
+EXCLUDE_CONTENT=()
 
 # --- Parse Arguments (Upgraded while/case loop) ---
 while [[ "$#" -gt 0 ]]; do
@@ -13,23 +14,17 @@ while [[ "$#" -gt 0 ]]; do
     --data) INCLUDE_DB_DATA=true; shift ;;
     --include-all) INCLUDE_ALL=true; shift ;;
     --include)
-      # Read comma-separated list into bash array
-      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "$2"
-      shift 2
-      ;;
+      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "$2"; shift 2 ;;
     --include=*)
-      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "${1#*=}"
-      shift 1
-      ;;
+      IFS=',' read -r -a EXPLICIT_INCLUDES <<< "${1#*=}"; shift 1 ;;
     --exclude)
-      # Read comma-separated list of runtime exclusions
-      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "$2"
-      shift 2
-      ;;
+      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "$2"; shift 2 ;;
     --exclude=*)
-      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "${1#*=}"
-      shift 1
-      ;;
+      IFS=',' read -r -a EXPLICIT_EXCLUDES <<< "${1#*=}"; shift 1 ;;
+    --exclude-content)
+      IFS=',' read -r -a EXCLUDE_CONTENT <<< "$2"; shift 2 ;;
+    --exclude-content=*)
+      IFS=',' read -r -a EXCLUDE_CONTENT <<< "${1#*=}"; shift 1 ;;
     -*) echo "Unknown option: $1"; exit 1 ;;
     *) TARGET_FOLDER="$1"; shift ;;
   esac
@@ -48,7 +43,6 @@ OUTPUT_FILE="${FOLDER_NAME}_report.txt"
 TREE_IGNORES=()
 FIND_EXCLUSIONS=()
 
-# Helper function to check if an item was explicitly included
 should_ignore() {
     local target="$1"
     for inc in "${EXPLICIT_INCLUDES[@]}"; do
@@ -75,7 +69,7 @@ add_file_ignore() {
     fi
 }
 
-# 1. Core Ignores (Always ignored unless explicitly asked for)
+# 1. Core Ignores 
 add_dir_ignore ".git"
 add_dir_ignore "__pycache__"
 add_dir_ignore ".vs"
@@ -83,15 +77,13 @@ add_dir_ignore ".idea"
 add_dir_ignore ".vscode"
 add_file_ignore "*_report.txt"
 
-# 2. Heavy Ignores (Ignored by default, bypassed by --include-all or --include)
+# 2. Heavy Ignores 
 if [ "$INCLUDE_ALL" = false ]; then
     add_dir_ignore "node_modules"
     add_dir_ignore "dist"
     add_dir_ignore "build"
     add_dir_ignore "out"
     add_dir_ignore "target"
-    add_dir_ignore "Debug"
-    add_dir_ignore "Release"
     add_dir_ignore ".next"
     
     add_file_ignore "Cargo.lock"
@@ -101,37 +93,30 @@ if [ "$INCLUDE_ALL" = false ]; then
     add_file_ignore ".env"
 fi
 
-# 3. Dynamic User Excludes (Passed via --exclude)
+# 3. Dynamic User Excludes (Passed via --exclude) - Drops from Tree AND Content
 for exc in "${EXPLICIT_EXCLUDES[@]}"; do
     TREE_IGNORES+=("$exc")
+    FIND_EXCLUSIONS+=( -name "$exc" -prune -o )
+done
+
+# 4. Dynamic Content-Only Excludes (Passed via --exclude-content) - Keeps in Tree, Drops Content
+for exc in "${EXCLUDE_CONTENT[@]}"; do
     FIND_EXCLUSIONS+=( -name "$exc" -prune -o )
 done
 
 # Close the find exclusions array
 FIND_EXCLUSIONS+=( -type f -print0 )
 
-# Join TREE_IGNORES array into a regex string (e.g. "dist|node_modules|.git")
 IGNORE_TREE_PATTERNS=$(IFS="|"; echo "${TREE_IGNORES[*]}")
-
 
 # --- Start the report ---
 echo "Generating report for: $TARGET_FOLDER"
-if [ "$INCLUDE_ALL" = true ]; then
-    echo "Mode: Including ALL heavy directories (dist, node_modules, etc.)"
-elif [ ${#EXPLICIT_INCLUDES[@]} -gt 0 ]; then
-    echo "Mode: Explicitly including -> ${EXPLICIT_INCLUDES[*]}"
-fi
-
-if [ ${#EXPLICIT_EXCLUDES[@]} -gt 0 ]; then
-    echo "Mode: Explicitly excluding -> ${EXPLICIT_EXCLUDES[*]}"
-fi
 
 # Step 1: Tree Structure
 echo "=== FOLDER TREE FOR: $TARGET_FOLDER ===" > "$OUTPUT_FILE"
 if command -v tree &> /dev/null; then
     tree -a "$TARGET_FOLDER" -I "$IGNORE_TREE_PATTERNS" >> "$OUTPUT_FILE"
 else
-    echo "[Warning: 'tree' command not found. Falling back to basic directory listing]" >> "$OUTPUT_FILE"
     find "$TARGET_FOLDER" -type d | sed -e 's;[^/]*/;|____;g;s;____|; |;g' >> "$OUTPUT_FILE"
 fi
 echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
@@ -139,13 +124,11 @@ echo -e "\n\n=======================\n\n" >> "$OUTPUT_FILE"
 # Step 2: File Contents
 echo "=== FILE CONTENTS ===" >> "$OUTPUT_FILE"
 
-# Execute the dynamically built find command safely
 find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d '' file; do
   echo -e "\n\n--- Content of: $file ---" >> "$OUTPUT_FILE"
 
   file_lower="${file,,}"
 
-  # 1. Handle PDF Files
   if [[ "$file_lower" == *.pdf ]]; then
     if command -v pdftotext &> /dev/null; then
         pdftotext "$file" - >> "$OUTPUT_FILE" 2>/dev/null || echo "[Could not extract text from PDF]" >> "$OUTPUT_FILE"
@@ -153,25 +136,20 @@ find "$TARGET_FOLDER" "${FIND_EXCLUSIONS[@]}" | sort -z | while IFS= read -r -d 
         echo "[pdftotext not installed. Skipping PDF content]" >> "$OUTPUT_FILE"
     fi
 
-  # 2. Handle SQLite Database Files
   elif [[ "$file_lower" == *.db || "$file_lower" == *.sqlite || "$file_lower" == *.sqlite3 ]]; then
     if command -v sqlite3 &> /dev/null; then
       if [ "$INCLUDE_DB_DATA" = true ]; then
-         echo ">>> Extracting FULL SQLite Schema AND Data..." >> "$OUTPUT_FILE"
          sqlite3 "$file" .dump >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
       else
-         echo ">>> Extracting SQLite Schema Only..." >> "$OUTPUT_FILE"
          sqlite3 "$file" .schema >> "$OUTPUT_FILE" 2>/dev/null || echo "[Error reading SQLite file]" >> "$OUTPUT_FILE"
       fi
     else
       echo "[Binary SQLite file detected. Install 'sqlite3' to see text dump]" >> "$OUTPUT_FILE"
     fi
 
-  # 3. Handle Known Binary/Media Files (Fast Skip via Extension)
   elif [[ "$file_lower" =~ \.(node|pyc|pkl|jpg|jpeg|png|gif|bmp|svg|webp|ico|mp4|mkv|avi|mov|wmv|flv|webm|ttf|otf|woff|woff2|eot|mp3|wav|zip|tar|gz|rar|exe|dll|so|obj|o|out|bin|pdb|class|tlog|ilk|idb|ipch|pch|gch|xlsx|xls|doc|docx|ppt|pptx|jar|csv|log)$ ]]; then
     echo "[Skipping known binary or build file based on extension]" >> "$OUTPUT_FILE"
     
-  # 4. Handle Regular Files (Dynamic MIME Type Check)
   else
     MIME_ENCODING=$(file -b --mime-encoding "$file" 2>/dev/null)
     if [[ "$MIME_ENCODING" == "binary" ]]; then

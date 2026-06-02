@@ -19,9 +19,9 @@ Originally designed for developers, researchers, and students, this tool is **op
 * **📄 Smart Data Extraction:** * **PDFs:** Uses `pdftotext` to extract raw, searchable text from document assets.
     * **SQLite Databases:** Dumps **schema only** by default to keep context lightweight, with an optional `--data` flag to inject full table rows.
 * **⚙️ Graceful Fallbacks:** If optional dependencies like `tree` or `pdftotext` are missing on the host machine, the script will not crash; it will seamlessly fall back to native Bash alternatives or skip the unreadable files.
-* **🎛️ Granular Context Control (NEW):** 
-    * **Include:** Need to inspect a build folder? Use the `--include` flag to explicitly rescue specific files or directories (like `dist` or `package-lock.json`) from the ignore list without dumping the rest of the junk.
-    * **Exclude:** Want to skip specific test directories or temporary folders at runtime? Pass them to the `--exclude` flag to temporarily ignore them without modifying the script's core configurations.
+* **🎛️ Granular Context Control:** * **Include:** Rescue specific ignored items (like `dist`) using `--include` without dumping the rest of the junk.
+    * **Exclude:** Completely hide specific directories/files from both the tree and the content dump using `--exclude`.
+    * **Exclude Content:** Keep important structural folders in your tree map, but block their heavy code from inflating your context window using `--exclude-content`.
 
 ---
 
@@ -83,11 +83,21 @@ Forces the script to traverse and extract *everything*, bypassing the default he
 ```bash
 folder-report . --include-all
 ```
-### 5. Dynamic Exclusion (Ignore specific items)
-If you have specific folders or files you want to omit from the report at runtime (like `tests` or `dummy_data`), pass a comma-separated list to the `--exclude` flag. 
+### 5. Dynamic Exclusion (Ignore specific items completely)
+If you have specific folders or files you want to omit from the report entirely (like `tests` or `dummy_data`), pass a comma-separated list to the `--exclude` flag. 
+
 ```bash
 folder-report . --exclude tests,dummy_data,secret_config.json
-(This prevents the specified items from being mapped in the tree or having their contents extracted).
+```
+*(This prevents the specified items from being mapped in the tree or having their contents extracted).*
+
+### 6. Tree-Only Mode (Exclude Content)
+If you want a folder to show up in your directory tree so the AI knows it exists, but you don't want to dump its thousands of lines of code into the context window (e.g., test suites or migration files), use the `--exclude-content` flag.
+
+```bash
+folder-report . --exclude-content __tests__,migrations,scripts
+```
+*(These items will appear in the `=== FOLDER TREE ===` but will be silently skipped in the `=== FILE CONTENTS ===` section).*
 ---
 
 ## 🗄️ SQLite Output Examples
